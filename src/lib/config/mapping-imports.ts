@@ -64,7 +64,7 @@ function auditStars(
 
     for (const exported of checker.getExportsOfModule(module)) {
       const earlier = fromStars.get(exported.name);
-      if (earlier && earlier !== exported) {
+      if (earlier && bindingOf(checker, earlier) !== bindingOf(checker, exported)) {
         const clashing = audit.ambiguous.get(exported.name) ?? new Set([earlier]);
         audit.ambiguous.set(exported.name, clashing.add(exported));
       }
@@ -80,6 +80,9 @@ function auditStars(
 
   return audit;
 }
+
+const bindingOf = (checker: ts.TypeChecker, s: ts.Symbol): ts.Symbol =>
+  s.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(s) : s;
 
 // Type-only-ness lives on the export clause, not the binding: `export type { C }` of a class
 // erases at runtime even though the class is a value.
@@ -150,8 +153,7 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
       if (isTypeOnlyExport(exported)) continue;
       // Only where the clash actually won: an explicit export of the same name shadows it.
       if (audit.ambiguous.get(exported.name)?.has(exported)) continue;
-      const binding =
-        exported.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(exported) : exported;
+      const binding = bindingOf(checker, exported);
       // Types are erased, so a rewrite carrying one would resolve to undefined at runtime.
       if (binding.flags & ts.SymbolFlags.Value) surface.set(exported.name, binding);
     }
@@ -234,6 +236,10 @@ export interface MappingImportResolver {
  * `sharedMappings` must be post-`normalizeOptions`, expanded *and* pruned: an unexpanded key
  * warns, an unpruned one cannot be detected and rewrites onto an unpublished specifier. Paths
  * are normalized but not `realpath`ed, so a caller behind a symlink must pass the real path.
+ *
+ * Belongs on an app build only: a build whose entry points are the mappings themselves reaches
+ * this from inside every one of them, so nothing can rewrite and the program is built to be
+ * discarded.
  */
 export function createMappingImportResolver(
   sharedMappings: PathToImport,
@@ -344,12 +350,15 @@ export function createMappingImportResolver(
     const containing = mappings.filter(m => tail === m.tail || tail.startsWith(m.tailPrefix));
     if (containing.length === 0) return null;
 
-    const target = graph.resolveFile(imported);
-    if (!target) return null;
-
     // A mapped lib reaching into itself stays internal, or its bundle would import itself.
     const importer = path.resolve(importerFile);
     const reachableFrom = containing.filter(m => !isUnderDir(importer, m.dir));
+    // Nothing below can rewrite or warn once this is empty, and both calls it skips build
+    // the program.
+    if (reachableFrom.length === 0) return null;
+
+    const target = graph.resolveFile(imported);
+    if (!target) return null;
 
     // An exact hit maps a file onto its own published specifier: nothing to check, and the test
     // below would wrongly decline when the barrel re-exports a specifier it cannot read.

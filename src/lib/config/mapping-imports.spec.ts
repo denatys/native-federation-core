@@ -209,6 +209,27 @@ describe('createMappingImportResolver', () => {
     expect(resolve(f('libs/ui/src/b'), APP)).toBeNull();
   });
 
+  // Two branches carrying one name from the *same* binding are not ambiguous: ES exports it,
+  // and so does tsc.
+  it('rewrites when two star branches reach the target through one binding', () => {
+    const io = createMemoryIo()
+      .setFile(f('libs/ui/src/index.ts'), `export * from './re'; export * from './badge';`)
+      .setFile(f('libs/ui/src/re.ts'), `export { Badge } from './badge';`)
+      .setFile(f('libs/ui/src/badge.ts'), `export class Badge {}`);
+    const resolve = createMappingImportResolver(MAPPINGS, io);
+    expect(resolve(f('libs/ui/src/badge'), APP)).toBe('@myorg/ui');
+  });
+
+  it('rewrites when both branches are named re-exports of one binding', () => {
+    const io = createMemoryIo()
+      .setFile(f('libs/ui/src/index.ts'), `export * from './a'; export * from './b';`)
+      .setFile(f('libs/ui/src/a.ts'), `export { Badge } from './badge';`)
+      .setFile(f('libs/ui/src/b.ts'), `export { Badge } from './badge';`)
+      .setFile(f('libs/ui/src/badge.ts'), `export class Badge {}`);
+    const resolve = createMappingImportResolver(MAPPINGS, io);
+    expect(resolve(f('libs/ui/src/badge'), APP)).toBe('@myorg/ui');
+  });
+
   // An explicit re-export shadows a star carrying the same name, so only one of the two files
   // is actually reachable under it.
   it('credits the name to the explicit re-export rather than the star it shadows', () => {
@@ -840,6 +861,24 @@ describe('createMappingImportResolver — the unpublished-target warning', () =>
   it('stays silent when the rewrite succeeds', () => {
     const io = createMemoryIo()
       .setFile(f('libs/ui/src/index.ts'), `export * from './badge.component';`)
+      .setFile(f('libs/ui/src/badge.component.ts'), `export class BadgeComponent {}`);
+    const resolve = createMappingImportResolver(MAPPINGS, io);
+
+    expect(resolve(f('libs/ui/src/badge.component'), APP)).toBe('@myorg/ui');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  // The advice would name an export already in the barrel, leaving the reader nowhere to go.
+  it('stays silent when two star branches reach the target through one binding', () => {
+    const io = createMemoryIo()
+      .setFile(
+        f('libs/ui/src/index.ts'),
+        `export * from './ui.module';
+         export * from './re';
+         export * from './badge.component';`
+      )
+      .setFile(f('libs/ui/src/ui.module.ts'), `export class UiModule {}`)
+      .setFile(f('libs/ui/src/re.ts'), `export { BadgeComponent } from './badge.component';`)
       .setFile(f('libs/ui/src/badge.component.ts'), `export class BadgeComponent {}`);
     const resolve = createMappingImportResolver(MAPPINGS, io);
 
