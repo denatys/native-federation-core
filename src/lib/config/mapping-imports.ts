@@ -97,13 +97,12 @@ function isTypeOnlyExport(symbol: ts.Symbol): boolean {
 function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
   const options: ts.CompilerOptions = { ...BASE_OPTIONS, paths };
   let roots: string[] = [];
-  let generation = 0;
   let service: ts.LanguageService | null = null;
   let program: ts.Program | null | undefined;
   const surfaces = new Map<string, Surface | null>();
 
-  // The one port method with no "never throws" guarantee, and this runs inside a bundler's
-  // resolve hook where an escaping error fails the build. Unreadable declines instead.
+  // The port method the contract lets throw that this actually leans on, called inside a
+  // bundler's resolve hook where an escaping error fails the build. Unreadable declines instead.
   const readText = (file: string): string | undefined => {
     try {
       return io.isFile(file) ? io.readText(file) : undefined;
@@ -114,7 +113,8 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
 
   const host: ts.LanguageServiceHost & ts.ModuleResolutionHost = {
     getScriptFileNames: () => roots,
-    getScriptVersion: () => String(generation),
+    // Files never change under one service: a rebuild drops it and parses afresh.
+    getScriptVersion: () => '0',
     getScriptSnapshot: file => {
       const text = readText(file);
       return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
@@ -205,7 +205,6 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
     },
 
     reset(): void {
-      generation++;
       roots = [];
       service = null;
       program = null;
