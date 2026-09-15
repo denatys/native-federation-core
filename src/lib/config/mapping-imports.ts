@@ -25,10 +25,9 @@ const BASE_OPTIONS: ts.CompilerOptions = {
 type Surface = Map<string, ts.Symbol>;
 
 /**
- * An unresolved star leaves the surface a lower bound: disqualifying for a target, whose names
- * must all be accounted for, but not for an entry point, which only has to cover them. Two stars
- * carrying one name from different bindings export neither, so counting it would claim a binding
- * nobody has.
+ * `complete` false leaves the surface a lower bound: disqualifying for a target, whose names must
+ * all be accounted for, not for an entry point, which only has to cover them. `ambiguous` holds
+ * names two stars carry from different bindings, which ES exports as neither.
  */
 interface StarAudit {
   complete: boolean;
@@ -84,8 +83,7 @@ function auditStars(
 const bindingOf = (checker: ts.TypeChecker, s: ts.Symbol): ts.Symbol =>
   s.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(s) : s;
 
-// Type-only-ness lives on the export clause, not the binding: `export type { C }` of a class
-// erases at runtime even though the class is a value.
+// `export type { C }` of a class erases at runtime: the type-only flag is on the clause.
 function isTypeOnlyExport(symbol: ts.Symbol): boolean {
   return !!symbol.declarations?.some(
     d => ts.isExportSpecifier(d) && (d.isTypeOnly || d.parent.parent.isTypeOnly)
@@ -101,8 +99,7 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
   let program: ts.Program | null | undefined;
   const surfaces = new Map<string, Surface | null>();
 
-  // The port method the contract lets throw that this actually leans on, called inside a
-  // bundler's resolve hook where an escaping error fails the build. Unreadable declines instead.
+  // The contract lets `readText` throw, and an escaping error fails the bundler's build.
   const readText = (file: string): string | undefined => {
     try {
       return io.isFile(file) ? io.readText(file) : undefined;
@@ -160,8 +157,7 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
     return surface;
   };
 
-  // `getProgram()` re-checks the host's compilation settings on every call, which walks the
-  // alias table -- so it is fetched once per build, not two or three times per lookup.
+  // `getProgram()` re-walks the alias table on every call, so it is fetched once per build.
   const currentProgram = (): ts.Program | undefined =>
     (program ??= (service ??= ts.createLanguageService(host)).getProgram());
 
@@ -169,8 +165,7 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
     resolveFile(rawPath: string): string | null {
       const absolute = path.resolve(rawPath);
       // `resolveModuleName` takes a specifier, not a path, so the last segment is re-spelled
-      // relative to its own directory -- which is what puts tsc's own algorithm in charge.
-      // Always relative, so BASE_OPTIONS: passing the alias table costs a pattern scan per call.
+      // relative to its own directory. Always relative, hence BASE_OPTIONS over `options`.
       const from = path.join(path.dirname(absolute), '__nf_resolve__.ts');
       const specifier = './' + path.basename(absolute);
       return (
@@ -179,8 +174,7 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
       );
     },
 
-    // Entry points are the only roots, so a target none of them reach is absent from the
-    // program -- and one they cannot reach is one they cannot republish, so declining is right.
+    // Entry points are the only roots: a target none of them reach cannot be republished.
     useRoots(entryPoints: string[]): void {
       roots = entryPoints;
       service = null;
@@ -236,9 +230,8 @@ export interface MappingImportResolver {
  * warns, an unpruned one cannot be detected and rewrites onto an unpublished specifier. Paths
  * are normalized but not `realpath`ed, so a caller behind a symlink must pass the real path.
  *
- * Belongs on an app build only: a build whose entry points are the mappings themselves reaches
- * this from inside every one of them, so nothing can rewrite and the program is built to be
- * discarded.
+ * App builds only: where the mappings are themselves the entry points every call is a
+ * self-import, so nothing rewrites and the program is built to be discarded.
  */
 export function createMappingImportResolver(
   sharedMappings: PathToImport,
@@ -275,8 +268,7 @@ export function createMappingImportResolver(
       })
       .sort((a, b) => b.dir.length - a.dir.length);
 
-    // Every mapping dir shares the workspace root, so comparing each whole would re-walk that
-    // root per mapping on every import -- a cost that grows with how deep the checkout sits.
+    // Every mapping dir shares the workspace root, which whole-path compares re-walk per import.
     let root = resolved[0]?.dirPosix ?? '';
     for (const m of resolved) {
       let i = 0;
@@ -297,11 +289,9 @@ export function createMappingImportResolver(
   const warned = new Set<string>();
 
   /**
-   * The one decline a caller can act on: the entry point was readable and does not carry what
-   * the target publishes. Every other decline means "unknown" and stays silent.
-   *
-   * Widening a barrel does not stop the compiler emitting the deep import (per the `ngc` probe
-   * in #122, output is byte-identical either way) -- it makes it rewritable. Word it that way.
+   * The one decline a caller can act on: the entry point was readable and does not carry what the
+   * target publishes. Every other decline means "unknown" and stays silent. Widening the barrel
+   * makes the import rewritable rather than stopping it (#122), so word it that way.
    */
   const warnUnpublished = (
     mapping: { entryPoint: string; importName: string } | undefined,
@@ -310,14 +300,13 @@ export function createMappingImportResolver(
   ): void => {
     if (!mapping) return;
 
-    // Marked before the verdict: the answer cannot change within a build, and esbuild
-    // re-resolves the whole graph, so this keeps the work to once per target.
+    // Marked before the verdict: esbuild re-resolves the whole graph, and the answer is fixed.
     const key = `${target}\0${mapping.importName}`;
     if (warned.has(key)) return;
     warned.add(key);
 
-    // Completeness is required here though the test above does not: one `export *` the barrel
-    // cannot read may be publishing the file after all, which is not the caller's to fix.
+    // Required complete though the rewrite test is not: an unreadable `export *` may be
+    // publishing the file after all, which is not the caller's to fix.
     const surface = graph.surface(mapping.entryPoint, true);
     if (!surface) return;
 
@@ -338,8 +327,7 @@ export function createMappingImportResolver(
   const resolve: MappingImportResolver = (importedFile, importerFile) => {
     const { root, mappings } = (resolved ??= resolveMappings());
 
-    // Containment and the self-import check below are prefix tests, so an unnormalized `..` that
-    // resolves into a mapped lib slips past both -- and the lib's own bundle then imports itself.
+    // Both checks below are prefix tests, which an unnormalized `..` into a mapped lib slips past.
     const imported = path.resolve(importedFile);
 
     // Every relative import in the build reaches here, and most land nowhere near a mapping.
@@ -352,20 +340,19 @@ export function createMappingImportResolver(
     // A mapped lib reaching into itself stays internal, or its bundle would import itself.
     const importer = path.resolve(importerFile);
     const reachableFrom = containing.filter(m => !isUnderDir(importer, m.dir));
-    // Nothing below can rewrite or warn once this is empty, and both calls it skips build
-    // the program.
+    // Nothing below can rewrite or warn when empty, and both calls it skips build the program.
     if (reachableFrom.length === 0) return null;
 
     const target = graph.resolveFile(imported);
     if (!target) return null;
 
-    // An exact hit maps a file onto its own published specifier: nothing to check, and the test
-    // below would wrongly decline when the barrel re-exports a specifier it cannot read.
+    // A file mapped onto its own specifier needs no test, and the one below would wrongly decline
+    // a barrel re-exporting a specifier it cannot read.
     const exact = reachableFrom.find(m => m.entryPoint === target);
     if (exact) return exact.importName;
 
-    // The rewrite keeps the property access, so every binding must reach through the entry
-    // point under the same name -- one symbol, reached two ways.
+    // The rewrite keeps the property access, so every binding must reach through the entry point
+    // under the same name.
     const targetSurface = graph.surface(target, true);
     if (!targetSurface) {
       // Unreachable means unpublished, which is actionable; present-but-unreadable is not.
