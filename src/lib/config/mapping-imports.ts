@@ -7,8 +7,8 @@ import { isUnderDir, toPosix } from '../utils/path-patterns.js';
 import { toDiskCase } from '../utils/disk-case.js';
 import { logger } from '../utils/logger.js';
 
-// Bundler resolution is the permissive superset of what a mapped lib can spell -- extensionless
-// specifiers, directory indexes, node16's `./x.js` naming `x.ts` -- and needs no tsconfig.
+// The permissive superset of what a mapped lib can spell -- extensionless specifiers, directory
+// indexes, node16's `./x.js` naming `x.ts` -- and it needs no tsconfig.
 const BASE_OPTIONS: ts.CompilerOptions = {
   allowJs: true,
   module: ts.ModuleKind.ESNext,
@@ -90,8 +90,8 @@ function isTypeOnlyExport(symbol: ts.Symbol): boolean {
   );
 }
 
-// `paths` carries the mappings, so a barrel re-exporting a sibling through its alias resolves
-// rather than leaving the surface short. An alias that is not a mapping still does not.
+// `paths` carries the mappings, so a barrel re-exporting a sibling through its published alias
+// resolves rather than leaving the surface short.
 function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
   const options: ts.CompilerOptions = { ...BASE_OPTIONS, paths };
   let roots: string[] = [];
@@ -174,7 +174,6 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
       );
     },
 
-    // Entry points are the only roots: a target none of them reach cannot be republished.
     useRoots(entryPoints: string[]): void {
       roots = entryPoints;
       service = null;
@@ -237,7 +236,6 @@ export function createMappingImportResolver(
   sharedMappings: PathToImport,
   io: FileReaderPort = nodeIo
 ): MappingImportResolver {
-  // The mappings are their own `paths` table, inverted: a path per published specifier.
   const aliases: ts.MapLike<string[]> = {};
   for (const [mappedPath, importName] of Object.entries(sharedMappings)) {
     (aliases[importName] ??= []).push(mappedPath);
@@ -260,8 +258,8 @@ export function createMappingImportResolver(
       .flatMap(([key, importName]) => {
         const resolvedKey = graph.resolveFile(key);
         if (!resolvedKey) return [];
-        // Containment is a prefix test against bundler paths, which carry the spelling on disk.
-        // A mis-cased key resolves anyway on a case-insensitive fs, then fails every prefix.
+        // A mis-cased key resolves anyway on a case-insensitive fs, then fails every prefix
+        // test against the spelling the bundler reports.
         const entryPoint = toDiskCase(io, resolvedKey);
         const dir = path.dirname(entryPoint);
         return [{ dir, dirPosix: toPosix(dir).replace(/\/+$/, ''), entryPoint, importName }];
@@ -330,17 +328,16 @@ export function createMappingImportResolver(
     // Both checks below are prefix tests, which an unnormalized `..` into a mapped lib slips past.
     const imported = path.resolve(importedFile);
 
-    // Every relative import in the build reaches here, and most land nowhere near a mapping.
     const importedPosix = toPosix(imported);
     if (!importedPosix.startsWith(root)) return null;
     const tail = importedPosix.slice(root.length);
     const containing = mappings.filter(m => tail === m.tail || tail.startsWith(m.tailPrefix));
     if (containing.length === 0) return null;
 
-    // A mapped lib reaching into itself stays internal, or its bundle would import itself.
+    // Excluded, or the mapped lib's own bundle would import itself.
     const importer = path.resolve(importerFile);
     const reachableFrom = containing.filter(m => !isUnderDir(importer, m.dir));
-    // Nothing below can rewrite or warn when empty, and both calls it skips build the program.
+    // Nothing below can rewrite or warn when empty, and the two calls it skips build the program.
     if (reachableFrom.length === 0) return null;
 
     const target = graph.resolveFile(imported);
@@ -351,8 +348,7 @@ export function createMappingImportResolver(
     const exact = reachableFrom.find(m => m.entryPoint === target);
     if (exact) return exact.importName;
 
-    // The rewrite keeps the property access, so every binding must reach through the entry point
-    // under the same name.
+    // The rewrite keeps the property access, so each binding must arrive under the same name.
     const targetSurface = graph.surface(target, true);
     if (!targetSurface) {
       // Unreachable means unpublished, which is actionable; present-but-unreadable is not.
