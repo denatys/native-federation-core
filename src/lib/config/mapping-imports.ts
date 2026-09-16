@@ -47,6 +47,12 @@ function auditStars(
   const source = program.getSourceFile(file);
   if (!source) return { complete: false, ambiguous: audit.ambiguous };
 
+  const clash = (name: string, ...symbols: ts.Symbol[]) => {
+    const set = audit.ambiguous.get(name) ?? new Set<ts.Symbol>();
+    for (const symbol of symbols) set.add(symbol);
+    audit.ambiguous.set(name, set);
+  };
+
   const fromStars = new Map<string, ts.Symbol>();
   for (const statement of source.statements) {
     if (!ts.isExportDeclaration(statement) || statement.isTypeOnly) continue;
@@ -64,8 +70,7 @@ function auditStars(
     for (const exported of checker.getExportsOfModule(module)) {
       const earlier = fromStars.get(exported.name);
       if (earlier && bindingOf(checker, earlier) !== bindingOf(checker, exported)) {
-        const clashing = audit.ambiguous.get(exported.name) ?? new Set([earlier]);
-        audit.ambiguous.set(exported.name, clashing.add(exported));
+        clash(exported.name, earlier, exported);
       }
       fromStars.set(exported.name, exported);
     }
@@ -74,7 +79,7 @@ function auditStars(
     if (!target) continue;
     const nested = auditStars(program, checker, target.fileName, seen);
     audit.complete &&= nested.complete;
-    for (const [name, clashing] of nested.ambiguous) audit.ambiguous.set(name, clashing);
+    for (const [name, clashing] of nested.ambiguous) clash(name, ...clashing);
   }
 
   return audit;

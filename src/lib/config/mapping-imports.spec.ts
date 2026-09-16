@@ -234,6 +234,23 @@ describe('createMappingImportResolver', () => {
     expect(resolve(f('libs/ui/src/b'), APP)).toBeNull();
   });
 
+  // `b` is itself ambiguous on `Config`, and merging its clash up used to replace the one
+  // found between `a` and `c` rather than join it, leaving the winning symbol unaccounted for.
+  it('declines a name three stars disagree on through a nested ambiguity', () => {
+    const io = createMemoryIo()
+      .setFile(
+        f('libs/ui/src/index.ts'),
+        `export * from './a'; export * from './b'; export * from './c';`
+      )
+      .setFile(f('libs/ui/src/a.ts'), `export class Config {}`)
+      .setFile(f('libs/ui/src/b.ts'), `export * from './d'; export * from './e';`)
+      .setFile(f('libs/ui/src/d.ts'), `export class Config {}`)
+      .setFile(f('libs/ui/src/e.ts'), `export class Config {}`)
+      .setFile(f('libs/ui/src/c.ts'), `export class Config {}`);
+    const resolve = createMappingImportResolver(MAPPINGS, io);
+    expect(resolve(f('libs/ui/src/a'), APP)).toBeNull();
+  });
+
   // Two branches carrying one name from the *same* binding are not ambiguous: ES exports it,
   // and so does tsc.
   it('rewrites when two star branches reach the target through one binding', () => {
