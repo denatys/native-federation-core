@@ -29,18 +29,18 @@ type Surface = Map<string, ts.Symbol>;
  * all be accounted for, not for an entry point, which only has to cover them. `ambiguous` holds
  * names two stars carry from different bindings, which ES exports as neither.
  */
-interface StarAudit {
+interface StarExportAudit {
   complete: boolean;
   ambiguous: Map<string, Set<ts.Symbol>>;
 }
 
-function auditStars(
+function auditStarExports(
   program: ts.Program,
   checker: ts.TypeChecker,
   file: string,
   seen: Set<string>
-): StarAudit {
-  const audit: StarAudit = { complete: true, ambiguous: new Map() };
+): StarExportAudit {
+  const audit: StarExportAudit = { complete: true, ambiguous: new Map() };
   if (seen.has(file)) return audit;
   seen.add(file);
 
@@ -77,7 +77,7 @@ function auditStars(
 
     const target = module.declarations?.find(ts.isSourceFile);
     if (!target) continue;
-    const nested = auditStars(program, checker, target.fileName, seen);
+    const nested = auditStarExports(program, checker, target.fileName, seen);
     audit.complete &&= nested.complete;
     for (const [name, clashing] of nested.ambiguous) clash(name, ...clashing);
   }
@@ -156,7 +156,7 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
     if (program.getSyntacticDiagnostics(source).length > 0) return null;
 
     const checker = program.getTypeChecker();
-    const audit = auditStars(program, checker, file, new Set());
+    const audit = auditStarExports(program, checker, file, new Set());
     if (requireComplete && !audit.complete) return null;
 
     const moduleSymbol = checker.getSymbolAtLocation(source);
