@@ -222,7 +222,6 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
   };
 }
 
-/** Not in `/internal`: a bare name set drops which binding each name stands for. Tests only. */
 export function mappingExportNames(filePath: string, io: FileReaderPort = nodeIo): Set<string> {
   const graph = createModuleGraph(io, {});
   graph.useRoots([filePath]);
@@ -246,7 +245,7 @@ export interface MappingImportResolver {
  * are normalized but not `realpath`ed, so a caller behind a symlink must pass the real path.
  *
  * App builds only: where the mappings are themselves the entry points every call is a
- * self-import, so nothing rewrites and the program is built to be discarded.
+ * self-import, so nothing rewrites and the program is never built.
  */
 export function createMappingImportResolver(
   sharedMappings: PathToImport,
@@ -307,7 +306,7 @@ export function createMappingImportResolver(
   /**
    * The one decline a caller can act on: the entry point was readable and does not carry what the
    * target publishes. Every other decline means "unknown" and stays silent. Widening the barrel
-   * makes the import rewritable rather than stopping it (#122), so word it that way.
+   * makes the import rewritable rather than stopping it (#122).
    */
   const warnUnpublished = (
     mapping: { entryPoint: string; importName: string } | undefined,
