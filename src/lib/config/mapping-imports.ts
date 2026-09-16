@@ -112,8 +112,7 @@ function bindingOf(checker: ts.TypeChecker, s: ts.Symbol): ts.Symbol | null {
 function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
   const options: ts.CompilerOptions = { ...BASE_OPTIONS, paths };
   let roots: string[] = [];
-  let service: ts.LanguageService | null = null;
-  let program: ts.Program | null | undefined;
+  let program: ts.Program | null;
   const surfaces = new Map<string, Surface | null>();
 
   // The contract lets `readText` throw, and an escaping error fails the bundler's build.
@@ -125,23 +124,26 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
     }
   };
 
-  const host: ts.LanguageServiceHost & ts.ModuleResolutionHost = {
-    getScriptFileNames: () => roots,
-    // Files never change under one service: a rebuild drops it and parses afresh.
-    getScriptVersion: () => '0',
-    getScriptSnapshot: file => {
+  const caseSensitive = ts.sys?.useCaseSensitiveFileNames ?? true;
+
+  const host: ts.CompilerHost = {
+    getSourceFile: file => {
       const text = readText(file);
-      return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
+      return text === undefined
+        ? undefined
+        : ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
     },
+    writeFile: () => {},
+    getCanonicalFileName: file => (caseSensitive ? file : file.toLowerCase()),
+    getNewLine: () => '\n',
     getCurrentDirectory: () => '/',
-    getCompilationSettings: () => options,
     getDefaultLibFileName: () => 'lib.d.ts',
     fileExists: file => io.isFile(file),
     readFile: readText,
     directoryExists: dir => io.isDirectory(dir),
     getDirectories: dir => io.readDir(dir).filter(e => io.isDirectory(path.join(dir, e))),
     realpath: file => io.realpath(file),
-    useCaseSensitiveFileNames: () => ts.sys?.useCaseSensitiveFileNames ?? true,
+    useCaseSensitiveFileNames: () => caseSensitive,
   };
 
   const surfaceOf = (
@@ -173,9 +175,7 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
     return surface;
   };
 
-  // `getProgram()` re-walks the alias table on every call, so it is fetched once per build.
-  const currentProgram = (): ts.Program | undefined =>
-    (program ??= (service ??= ts.createLanguageService(host)).getProgram());
+  const currentProgram = (): ts.Program => (program ??= ts.createProgram(roots, options, host));
 
   return {
     resolveFile(rawPath: string): string | null {
@@ -192,13 +192,12 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
 
     useRoots(entryPoints: string[]): void {
       roots = entryPoints;
-      service = null;
       program = null;
       surfaces.clear();
     },
 
     reaches(file: string): boolean {
-      return !!currentProgram()?.getSourceFile(file);
+      return !!currentProgram().getSourceFile(file);
     },
 
     // Symbols compare by identity only within one program, so the memo dies with it.
@@ -207,15 +206,13 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
       const memo = surfaces.get(key);
       if (memo !== undefined) return memo;
 
-      const current = currentProgram();
-      const value = current ? surfaceOf(current, file, requireComplete) : null;
+      const value = surfaceOf(currentProgram(), file, requireComplete);
       surfaces.set(key, value);
       return value;
     },
 
     reset(): void {
       roots = [];
-      service = null;
       program = null;
       surfaces.clear();
     },
