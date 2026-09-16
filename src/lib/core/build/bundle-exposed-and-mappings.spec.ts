@@ -340,6 +340,30 @@ describe('bundleExposedAndMappingsCore (via injected build adapter)', () => {
       ).toMatchObject({ requiredVersion: '^2.1.0-next.1' });
     });
 
+    // A prerelease with a dash inside the tag, or build metadata after it, must still reach
+    // the formatter -- falling through would turn the ~ default into an exact pin.
+    it('keeps the default ~ on an awkward prerelease tag', async () => {
+      expect(await mappingFor({ version: '1.0.0-rc-1' })).toMatchObject({
+        requiredVersion: '~1.0.0-rc-1',
+      });
+      expect(await mappingFor({ version: '1.0.0-beta.1+sha' })).toMatchObject({
+        requiredVersion: '~1.0.0-beta.1+sha',
+      });
+    });
+
+    // federation.config.js is plain JS, so null gets past the types.
+    it('treats a null requiredVersion as absent', async () => {
+      expect(
+        await mappingFor({ version: '2.1.0', requiredVersion: null as unknown as undefined })
+      ).toMatchObject({ requiredVersion: '~2.1.0', version: '2.1.0' });
+    });
+
+    it('ignores an empty version inside the object', async () => {
+      expect(
+        await mappingFor({ version: '2.1.0', requiredVersion: { version: '', range: '^' } })
+      ).toMatchObject({ requiredVersion: '^2.1.0', version: '2.1.0' });
+    });
+
     it('leaves a multi-comparator range alone', async () => {
       expect(
         await mappingFor({ version: '>=1.0.0 <2.0.0', requiredVersion: { range: '^' } })

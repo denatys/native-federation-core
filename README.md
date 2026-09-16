@@ -329,7 +329,7 @@ share({
 
 Any prefix already on the detected version is replaced, and a prerelease tag is kept (`2.0.0-next.1` → `^2.0.0-next.1`). A range the format cannot be applied to — a multi-comparator one such as `>=1.0.0 <2.0.0` — is left alone.
 
-`version` may be set alongside `range` to format a version of your own instead of the detected one, and `version: 'auto'` is the same as omitting it.
+`version` may be set alongside `range` to format a version of your own instead of the detected one. `version: 'auto'` means "look the version up", so inside `share()` it overrides a `version` set next to it and falls back to the lookup in `package.json` — which fails if the package is not declared there.
 
 #### includeSecondaries
 

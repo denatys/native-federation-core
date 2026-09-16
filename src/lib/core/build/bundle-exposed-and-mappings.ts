@@ -190,10 +190,11 @@ function toSharedMappingInfo(
   );
   const requiredVersionCfg = mappingConfig.requiredVersion;
   // An explicit version drives requiredVersion too, the same way the detected one does.
-  const asked =
-    typeof requiredVersionCfg === 'object' && requiredVersionCfg.version !== 'auto'
+  const explicitVersion =
+    requiredVersionCfg && typeof requiredVersionCfg === 'object'
       ? requiredVersionCfg.version
       : undefined;
+  const asked = explicitVersion && explicitVersion !== 'auto' ? explicitVersion : undefined;
   const version = asked ?? mappingConfig.version ?? mappingVersion;
 
   return {
