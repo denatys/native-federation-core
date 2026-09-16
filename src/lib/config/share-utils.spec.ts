@@ -164,6 +164,25 @@ describe('shareCore (end-to-end via injected repository)', () => {
     expect(result['mylib'].requiredVersion).toBe('~1.2.3');
   });
 
+  // Same regex as the mapping path: a dash inside the prerelease tag must not defeat it.
+  it('applies the range over a prerelease with build metadata', () => {
+    const io = createMemoryIo().setFile(
+      path.join(PROJECT, 'package.json'),
+      JSON.stringify({ dependencies: { mylib: '1.0.0-beta.1+sha' } })
+    );
+    const repo = createPackageJsonRepository(io);
+
+    const result = shareCore(
+      io,
+      { mylib: { singleton: true, requiredVersion: { range: '^' }, includeSecondaries: false } },
+      PROJECT,
+      DEFAULT_SKIP_LIST,
+      repo
+    );
+
+    expect(result['mylib'].requiredVersion).toBe('^1.0.0-beta.1+sha');
+  });
+
   it('does not change complex ranges when applying auto range', () => {
     const complex = '>=1.0.0 <2.0.0';
     const io = createMemoryIo().setFile(
