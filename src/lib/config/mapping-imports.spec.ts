@@ -1028,6 +1028,17 @@ describe('createMappingImportResolver — a mis-cased mapping key', () => {
     expect(resolve(f('libs/ui/src/badge.component'), APP)).toBe('@myorg/ui');
   });
 
+  // Only the exact-entry-point branch can rewrite a barrel whose surface cannot be enumerated,
+  // and that branch is the module's one raw string compare.
+  it('still rewrites an exact entry-point hit it cannot enumerate', () => {
+    const io = createMemoryIo()
+      .setFile(f('libs/ui/src/index.ts'), `export * from '@angular/core';`)
+      .setFile(f('libs/UI/src/index.ts'), `export * from '@angular/core';`)
+      .setDiskCase(f('libs/UI/src/index.ts'), f('libs/ui/src/index.ts'));
+    const resolve = createMappingImportResolver({ [f('libs/UI/src/index.ts')]: '@myorg/ui' }, io);
+    expect(resolve(f('libs/ui/src/index.ts'), APP)).toBe('@myorg/ui');
+  });
+
   it('leaves a genuinely different directory alone', () => {
     // toDiskCase only corrects a case-only difference, so a symlinked or otherwise relocated
     // path is still handed back untouched — that stays the caller's to resolve.

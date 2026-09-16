@@ -276,7 +276,9 @@ export function createMappingImportResolver(
         if (!resolvedKey) return [];
         // A mis-cased key resolves anyway on a case-insensitive fs, then fails every prefix
         // test against the spelling the bundler reports.
-        const entryPoint = toDiskCase(io, resolvedKey);
+        // `toDiskCase` ends in `path.normalize`, which is backslash-separated on Windows,
+        // while the target compared against it below is always posix.
+        const entryPoint = toPosix(toDiskCase(io, resolvedKey));
         const dir = path.dirname(entryPoint);
         return [{ dir, dirPosix: toPosix(dir).replace(/\/+$/, ''), entryPoint, importName }];
       })
