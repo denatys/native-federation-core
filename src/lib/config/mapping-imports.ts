@@ -80,14 +80,26 @@ function auditStars(
   return audit;
 }
 
-const bindingOf = (checker: ts.TypeChecker, s: ts.Symbol): ts.Symbol =>
-  s.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(s) : s;
-
-// `export type { C }` of a class erases at runtime: the type-only flag is on the clause.
-function isTypeOnlyExport(symbol: ts.Symbol): boolean {
-  return !!symbol.declarations?.some(
-    d => ts.isExportSpecifier(d) && (d.isTypeOnly || d.parent.parent.isTypeOnly)
+// The flag sits on the specifier or on the clause one or two levels above it, and erases the
+// whole chain -- so the binding at the end of the chain cannot be asked whether it survived.
+const isTypeOnlyAlias = (s: ts.Symbol): boolean =>
+  !!s.declarations?.some(d =>
+    [d, d.parent, d.parent?.parent].some(
+      n => (n as { isTypeOnly?: boolean } | undefined)?.isTypeOnly
+    )
   );
+
+function bindingOf(checker: ts.TypeChecker, s: ts.Symbol): ts.Symbol | null {
+  const seen = new Set<ts.Symbol>();
+  let current = s;
+  while (current.flags & ts.SymbolFlags.Alias && !seen.has(current)) {
+    if (isTypeOnlyAlias(current)) return null;
+    seen.add(current);
+    const next = checker.getImmediateAliasedSymbol(current);
+    if (!next) return checker.getAliasedSymbol(current);
+    current = next;
+  }
+  return current;
 }
 
 // `paths` carries the mappings, so a barrel re-exporting a sibling through its published alias
@@ -147,12 +159,11 @@ function createModuleGraph(io: FileReaderPort, paths: ts.MapLike<string[]>) {
 
     const surface: Surface = new Map();
     for (const exported of checker.getExportsOfModule(moduleSymbol)) {
-      if (isTypeOnlyExport(exported)) continue;
       // Only where the clash actually won: an explicit export of the same name shadows it.
       if (audit.ambiguous.get(exported.name)?.has(exported)) continue;
       const binding = bindingOf(checker, exported);
       // Types are erased, so a rewrite carrying one would resolve to undefined at runtime.
-      if (binding.flags & ts.SymbolFlags.Value) surface.set(exported.name, binding);
+      if (binding && binding.flags & ts.SymbolFlags.Value) surface.set(exported.name, binding);
     }
     return surface;
   };

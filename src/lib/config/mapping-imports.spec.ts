@@ -186,6 +186,31 @@ describe('createMappingImportResolver', () => {
     expect(resolve(f('libs/ui/src/badge.component'), APP)).toBeNull();
   });
 
+  // tsc erases the import and the re-export that depends on it, so the emitted barrel has no
+  // `BadgeComponent` binding at all -- a rewrite would leave `i1.BadgeComponent` undefined.
+  it('declines when the barrel re-exports the target through a type-only import', () => {
+    const io = lib(
+      `export * from './ui.module';
+       import type { BadgeComponent } from './badge.component';
+       export { BadgeComponent };`
+    );
+    const resolve = createMappingImportResolver(MAPPINGS, io);
+    expect(resolve(f('libs/ui/src/badge.component'), APP)).toBeNull();
+  });
+
+  it('declines when a type-only hop sits one re-export above the target', () => {
+    const io = createMemoryIo()
+      .setFile(f('libs/ui/src/index.ts'), `export * from './mid';`)
+      .setFile(
+        f('libs/ui/src/mid.ts'),
+        `import type { BadgeComponent } from './badge.component';
+         export { BadgeComponent };`
+      )
+      .setFile(f('libs/ui/src/badge.component.ts'), `export class BadgeComponent {}`);
+    const resolve = createMappingImportResolver(MAPPINGS, io);
+    expect(resolve(f('libs/ui/src/badge.component'), APP)).toBeNull();
+  });
+
   // Two files under one mapping can declare the same name, and a set of names cannot tell them
   // apart. The barrel republishes a's `Config`, so rewriting b onto the mapping would leave
   // `i1.Config` reading a's class -- not duplicated, not undefined, just the wrong binding.
