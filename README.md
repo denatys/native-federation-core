@@ -309,6 +309,28 @@ Instead of setting `requiredVersion` to `auto` time and again, you can also skip
 setInferVersion(true);
 ```
 
+##### Choosing the emitted range
+
+The detected version is emitted exactly as your `package.json` spells it. To pick the format instead, pass an object:
+
+```typescript
+share({
+  '@my-org/lib': { singleton: true, requiredVersion: { range: '^' } },
+});
+```
+
+| `range`   | `1.2.3` becomes |
+| --------- | --------------- |
+| `'exact'` | `1.2.3`         |
+| `'^'`     | `^1.2.3`        |
+| `'~'`     | `~1.2.3`        |
+| `'minor'` | `^1.2.3`        |
+| `'patch'` | `~1.2.3`        |
+
+Any prefix already on the detected version is replaced, and a prerelease tag is kept (`2.0.0-next.1` → `^2.0.0-next.1`). A range the format cannot be applied to — a multi-comparator one such as `>=1.0.0 <2.0.0` — is left alone.
+
+`version` may be set alongside `range` to format a version of your own instead of the detected one, and `version: 'auto'` is the same as omitting it.
+
 #### includeSecondaries
 
 If set to `true`, all secondary entry points are added too. In the case of `@angular/common` this is also `@angular/common/http`, `@angular/common/http/testing`, `@angular/common/testing`, `@angular/common/http/upgrade`, and `@angular/common/locales`. This exhaustive list shows that using this option for `@angular/common` is not the best idea because normally, you don't need most of them.
@@ -460,6 +482,16 @@ module.exports = withNativeFederation({
 Plain strings and annotated pairs can be mixed freely. When several entries match the same mapped path, **the first one wins**, so put the specific entries before the general ones.
 
 The honoured properties are `singleton`, `strictVersion`, `requiredVersion`, `version`, `shareScope`, `pool` and `includeSecondaries`. Anything omitted keeps its current default: `singleton: true`, `strictVersion` following the `mappingVersion` flag, and the version read from the mapped library's nearest `package.json`. Setting `version` explicitly also drives `requiredVersion` unless you set that too.
+
+`requiredVersion` takes [the same object form as a shared package](#choosing-the-emitted-range), so a mapping can follow its library's version and still pick the range:
+
+```js
+module.exports = withNativeFederation({
+  sharedMappings: [[['@my-org/ui/*'], { requiredVersion: { range: '^' } }]],
+});
+```
+
+A mapped path defaults to `~<version>`: an in-workspace library is versioned in lockstep with nothing, so `~` is the safest bet. That default holds for an object that names no `range`, which is the one place mappings differ from a shared package.
 
 `build`, `platform`, `chunks` and `packageInfo` are **not** honoured for mapped paths — every mapping is built into the same bundle, so there is nothing for them to select.
 

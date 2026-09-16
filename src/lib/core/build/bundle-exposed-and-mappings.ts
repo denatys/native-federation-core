@@ -20,6 +20,8 @@ import type { EntryPoint, NFBuildAdapter } from '../../domain/core/build-adapter
 import { rewriteChunkImports } from './rewrite-chunk-imports.js';
 import { getBuildAdapter } from './build-adapter.js';
 import { resolveMappingConfig } from '../../config/mapping-utils.js';
+import { applyAutoRequiredOptions } from '../../config/version-lookup.js';
+import type { AutoRequiredOptions } from '../../domain/config/external-config.contract.js';
 
 export async function bundleExposedAndMappings(
   config: NormalizedFederationConfig,
@@ -186,13 +188,18 @@ function toSharedMappingInfo(
     config.sharedMappingsConfig,
     config.features.mappingVersion
   );
+  const requiredVersionCfg = mappingConfig.requiredVersion;
   // An explicit version drives requiredVersion too, the same way the detected one does.
-  const version = mappingConfig.version ?? mappingVersion;
+  const asked =
+    typeof requiredVersionCfg === 'object' && requiredVersionCfg.version !== 'auto'
+      ? requiredVersionCfg.version
+      : undefined;
+  const version = asked ?? mappingConfig.version ?? mappingVersion;
 
   return {
     packageName: mappedImport,
     outFileName,
-    requiredVersion: mappingConfig.requiredVersion ?? (version.length > 0 ? '~' + version : ''),
+    requiredVersion: mappingRequiredVersion(requiredVersionCfg, version),
     singleton: mappingConfig.singleton,
     strictVersion: mappingConfig.strictVersion,
     version,
@@ -204,6 +211,16 @@ function toSharedMappingInfo(
           entryPoint: normalize(path.normalize(mappedPath)),
         },
   };
+}
+
+// '~' stays the default range for a mapping; see README 'Configuring shared mappings'.
+function mappingRequiredVersion(
+  cfg: string | AutoRequiredOptions | undefined,
+  version: string
+): string {
+  if (typeof cfg === 'string') return cfg;
+  if (version.length === 0) return '';
+  return applyAutoRequiredOptions(version, { range: cfg?.range ?? '~' });
 }
 
 export function getMappingVersionCore(

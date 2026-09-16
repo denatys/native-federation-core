@@ -249,6 +249,22 @@ describe('withNativeFederation', () => {
     });
   });
 
+  // The version it formats is only read at build time.
+  it('carries an object-form requiredVersion through unresolved', () => {
+    getRawMappedPaths.mockReturnValue({
+      paths: {},
+      configs: { '@org/ui': { requiredVersion: { range: '^' as const } } },
+    });
+
+    const result = withNativeFederation({ sharedMappings: [[['@org/ui'], {}]] });
+
+    expect(result.sharedMappingsConfig['@org/ui']).toEqual({
+      singleton: true,
+      strictVersion: true,
+      requiredVersion: { range: '^' },
+    });
+  });
+
   it('respects explicit feature flags', () => {
     const result = withNativeFederation({
       features: { mappingVersion: false, denseChunking: true, denseExternals: true },

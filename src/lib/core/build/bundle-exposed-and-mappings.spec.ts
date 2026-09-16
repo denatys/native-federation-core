@@ -12,7 +12,10 @@ import { createMemoryIo } from '../../utils/io/__test-helpers__/memory-io.js';
 import { createFakeBuildAdapter } from './__test-helpers__/fake-build-adapter.js';
 import { prepareSkipList } from '../../config/default-skip-list.js';
 import { logger } from '../../utils/logger.js';
-import type { NormalizedFederationConfig } from '../../domain/config/federation-config.contract.js';
+import type {
+  NormalizedFederationConfig,
+  NormalizedMappingConfig,
+} from '../../domain/config/federation-config.contract.js';
 import type { NormalizedFederationOptions } from '../../domain/core/federation-options.contract.js';
 
 describe('getMappingVersion', () => {
@@ -271,6 +274,91 @@ describe('bundleExposedAndMappingsCore (via injected build adapter)', () => {
     );
 
     expect(result.mappings[0]).toMatchObject({ requiredVersion: '^2.0.0', version: '2.1.0' });
+  });
+
+  describe('requiredVersion as a range format', () => {
+    async function mappingFor(cfg: Partial<NormalizedMappingConfig>) {
+      const config = makeConfig({
+        sharedMappings: { './libs/foo': 'foo' },
+        sharedMappingsConfig: { foo: { singleton: true, strictVersion: true, ...cfg } },
+      });
+
+      const result = await bundleExposedAndMappingsCore(
+        { adapter: createFakeBuildAdapter() },
+        config,
+        makeFedOptions({ dev: false }),
+        []
+      );
+      return result.mappings[0]!;
+    }
+
+    it('formats the version with the requested range', async () => {
+      expect(await mappingFor({ version: '2.1.0', requiredVersion: { range: '^' } })).toMatchObject(
+        {
+          requiredVersion: '^2.1.0',
+          version: '2.1.0',
+        }
+      );
+    });
+
+    it('drops the prefix for an exact range', async () => {
+      expect(
+        await mappingFor({ version: '2.1.0', requiredVersion: { range: 'exact' } })
+      ).toMatchObject({ requiredVersion: '2.1.0' });
+    });
+
+    it("maps 'minor' to ^ and 'patch' to ~", async () => {
+      const minor = await mappingFor({ version: '2.1.0', requiredVersion: { range: 'minor' } });
+      const patch = await mappingFor({ version: '2.1.0', requiredVersion: { range: 'patch' } });
+
+      expect(minor.requiredVersion).toBe('^2.1.0');
+      expect(patch.requiredVersion).toBe('~2.1.0');
+    });
+
+    // The one place mappings differ from a shared package, whose baseline is the raw spec.
+    it('keeps the ~ default when no range is named', async () => {
+      expect(await mappingFor({ version: '2.1.0', requiredVersion: {} })).toMatchObject({
+        requiredVersion: '~2.1.0',
+      });
+    });
+
+    it('lets the version inside requiredVersion drive both fields', async () => {
+      expect(
+        await mappingFor({ version: '2.1.0', requiredVersion: { version: '3.0.0', range: '^' } })
+      ).toMatchObject({ requiredVersion: '^3.0.0', version: '3.0.0' });
+    });
+
+    it("falls back to the configured version when the object asks for 'auto'", async () => {
+      expect(
+        await mappingFor({ version: '2.1.0', requiredVersion: { version: 'auto', range: '^' } })
+      ).toMatchObject({ requiredVersion: '^2.1.0', version: '2.1.0' });
+    });
+
+    it('keeps a prerelease tag attached', async () => {
+      expect(
+        await mappingFor({ version: '2.1.0-next.1', requiredVersion: { range: '^' } })
+      ).toMatchObject({ requiredVersion: '^2.1.0-next.1' });
+    });
+
+    it('leaves a multi-comparator range alone', async () => {
+      expect(
+        await mappingFor({ version: '>=1.0.0 <2.0.0', requiredVersion: { range: '^' } })
+      ).toMatchObject({ requiredVersion: '>=1.0.0 <2.0.0' });
+    });
+
+    // mappingVersion is off in makeConfig, so nothing is detected.
+    it('stays empty when no version is known', async () => {
+      expect(await mappingFor({ requiredVersion: { range: '^' } })).toMatchObject({
+        requiredVersion: '',
+        version: '',
+      });
+    });
+
+    it('still takes a literal string verbatim', async () => {
+      expect(
+        await mappingFor({ version: '2.1.0', requiredVersion: '>=1.0.0 <3.0.0' })
+      ).toMatchObject({ requiredVersion: '>=1.0.0 <3.0.0' });
+    });
   });
 
   // The config table is keyed by the pattern the user wrote, not the resolved import.
