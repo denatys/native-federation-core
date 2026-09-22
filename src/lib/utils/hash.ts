@@ -10,7 +10,8 @@ type HashDeps = FileReaderPort & HashPort;
 
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const HEX = '0123456789abcdef';
-const BASE64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+// Rollup's, and so Vite's: `_` and `$`, never `-`, which separates the segment from the stem.
+const BASE64_ROLLUP = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$';
 
 export interface HashSlot {
   alphabet: string;
@@ -28,7 +29,7 @@ export function hashSlotOf(segment: string): HashSlot {
     ? BASE32
     : /^[0-9a-f]+$/.test(segment)
       ? HEX
-      : BASE64URL;
+      : BASE64_ROLLUP;
   return { alphabet, length: segment.length };
 }
 

@@ -171,8 +171,91 @@ describe('renameChunksByContentCore', () => {
       []
     );
 
-    expect(renamed.get('index-DqQoMqkL.js')).toMatch(/^index-[A-Za-z0-9_-]{8}\.js$/);
+    expect(renamed.get('index-DqQoMqkL.js')).toMatch(/^index-[A-Za-z0-9_$]{8}\.js$/);
     expect(renamed.get('chunk-1a2b3c4d.js')).toMatch(/^chunk-[0-9a-f]{8}\.js$/);
+  });
+
+  it('keeps a Rollup segment with `$` at its length', () => {
+    const io = createMemoryIo().setFile('/out/index-Dq$oMqkL.js', 'export const a = 1;\n');
+
+    const renamed = renameChunksByContentCore(io, '/out', ['index-Dq$oMqkL.js'], []);
+
+    expect(renamed.get('index-Dq$oMqkL.js')).toMatch(/^index-[A-Za-z0-9_$]{8}\.js$/);
+  });
+
+  it('does not take a short trailing word for a hash segment', () => {
+    const io = createMemoryIo().setFile('/out/lazy-panel.js', 'export const a = 1;\n');
+
+    const renamed = renameChunksByContentCore(io, '/out', ['lazy-panel.js'], []);
+
+    expect(renamed.get('lazy-panel.js')).toMatch(/^lazy-panel-[A-Z2-7]{8}\.js$/);
+  });
+
+  it('leaves a file that is not a script alone', () => {
+    const io = createMemoryIo()
+      .setFile('/out/chunk-AAAAAAAA.js', 'export const a = 1;\n')
+      .setFile('/out/styles-BBBBBBBB.css', '.a{}');
+
+    const renamed = renameChunksByContentCore(
+      io,
+      '/out',
+      ['chunk-AAAAAAAA.js', 'styles-BBBBBBBB.css'],
+      []
+    );
+
+    expect(renamed.has('styles-BBBBBBBB.css')).toBe(false);
+    expect(io.exists('/out/styles-BBBBBBBB.css')).toBe(true);
+  });
+
+  it('names the members of a cycle after the cycle, whatever the bundler called them', () => {
+    const build = (a: string, b: string, aText: string) =>
+      createMemoryIo()
+        .setFile(`/out/${a}`, `import './${b}';\n${aText}`)
+        .setFile(`/out/${b}`, `import './${a}';\nexport const b = 1;\n`);
+
+    const first = build('chunk-AAAAAAAA.js', 'chunk-BBBBBBBB.js', 'export const a = 1;\n');
+    const second = build('chunk-CCCCCCCC.js', 'chunk-DDDDDDDD.js', 'export const a = 1;\n');
+    const changed = build('chunk-AAAAAAAA.js', 'chunk-BBBBBBBB.js', 'export const a = 2;\n');
+
+    const fromFirst = renameChunksByContentCore(
+      first,
+      '/out',
+      ['chunk-AAAAAAAA.js', 'chunk-BBBBBBBB.js'],
+      []
+    );
+    const fromSecond = renameChunksByContentCore(
+      second,
+      '/out',
+      ['chunk-CCCCCCCC.js', 'chunk-DDDDDDDD.js'],
+      []
+    );
+    const fromChanged = renameChunksByContentCore(
+      changed,
+      '/out',
+      ['chunk-AAAAAAAA.js', 'chunk-BBBBBBBB.js'],
+      []
+    );
+
+    expect(fromFirst.get('chunk-AAAAAAAA.js')).toBe(fromSecond.get('chunk-CCCCCCCC.js'));
+    expect(fromFirst.get('chunk-BBBBBBBB.js')).toBe(fromSecond.get('chunk-DDDDDDDD.js'));
+    expect(fromFirst.get('chunk-BBBBBBBB.js')).not.toBe(fromChanged.get('chunk-BBBBBBBB.js'));
+    expect(first.readText(`/out/${fromFirst.get('chunk-BBBBBBBB.js')}`)).toBe(
+      second.readText(`/out/${fromSecond.get('chunk-DDDDDDDD.js')}`)
+    );
+  });
+
+  it('refuses two chunks whose bytes differ but hash alike', () => {
+    const memory = createMemoryIo()
+      .setFile('/out/chunk-AAAAAAAA.js', 'export const a = 1;\n')
+      .setFile('/out/chunk-BBBBBBBB.js', 'export const b = 2;\n');
+    const io = {
+      ...memory,
+      hash: () => ({ hex: () => '00', base64: () => Buffer.alloc(32).toString('base64') }),
+    };
+
+    expect(() =>
+      renameChunksByContentCore(io, '/out', ['chunk-AAAAAAAA.js', 'chunk-BBBBBBBB.js'], [])
+    ).toThrow(/same name/);
   });
 
   it('appends a hash segment to a name that carries none', () => {

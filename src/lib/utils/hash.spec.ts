@@ -37,9 +37,11 @@ describe('hashSlotOf', () => {
     expect(hashSlotOf('1a2b3c4d')).toEqual({ alphabet: '0123456789abcdef', length: 8 });
   });
 
-  it('reads base64url from a mixed-case segment', () => {
+  it("reads Rollup's alphabet from a mixed-case segment", () => {
     const slot = hashSlotOf('DqQoMqkL');
     expect(slot.alphabet).toHaveLength(64);
+    expect(slot.alphabet).toContain('$');
+    expect(slot.alphabet).not.toContain('-');
     expect(slot.length).toBe(8);
   });
 });
