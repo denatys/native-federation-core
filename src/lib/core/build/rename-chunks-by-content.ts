@@ -5,14 +5,12 @@ import type {
   HashPort,
 } from '../../domain/utils/io-port.contract.js';
 import { CHUNK_PREFIX } from '../../domain/core/chunk.js';
+import { DEFAULT_HASH_SLOT, hashChunkContent, hashSlotOf } from '../../utils/hash.js';
 
 type RenameDeps = FileReaderPort & FileWriterPort & HashPort;
 
-// esbuild's alphabet for the hash segment of an output name, so a renamed chunk keeps the shape
-// of the original and every reference to it keeps its byte length.
-const HASH_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-const HASH_SEGMENT = /-([A-Z2-7]+)$/;
-const DEFAULT_HASH_LENGTH = 8;
+// The hash segment of a bundler's output name, whichever alphabet it was written in.
+const HASH_SEGMENT = /-([A-Za-z0-9_]+)$/;
 
 const SOURCE_EXTENSION = /\.(m|c)?js$/;
 const SOURCE_MAP_COMMENT = /\/\/# sourceMappingURL=\S+\s*$/;
@@ -109,16 +107,7 @@ function hashedName(io: HashPort, file: string, body: string): string {
   const extension = file.match(SOURCE_EXTENSION)?.[0] ?? '';
   const stem = stemOf(file);
   const segment = stem.match(HASH_SEGMENT);
-  const length = segment ? segment[1]!.length : DEFAULT_HASH_LENGTH;
+  const slot = segment ? hashSlotOf(segment[1]!) : DEFAULT_HASH_SLOT;
   const base = segment ? stem.slice(0, -segment[0].length) : stem;
-  return `${base}-${contentHash(io, body, length)}${extension}`;
-}
-
-function contentHash(io: HashPort, body: string, length: number): string {
-  const digest = Buffer.from(io.hash('sha256', body).base64(), 'base64');
-  let hash = '';
-  for (let index = 0; index < length; index++) {
-    hash += HASH_ALPHABET[digest[index % digest.length]! % HASH_ALPHABET.length];
-  }
-  return hash;
+  return `${base}-${hashChunkContent(io, body, slot)}${extension}`;
 }

@@ -1,7 +1,7 @@
 import * as path from 'path';
 import type { FileReaderPort, HashPort } from '../../domain/utils/io-port.contract.js';
 import type { IntegrityMap } from '../../domain/core/federation-info.contract.js';
-import { integrityForFileCore } from '../../utils/hash-file.js';
+import { integrityForFileCore } from '../../utils/hash.js';
 
 type IntegrityDeps = FileReaderPort & HashPort;
 

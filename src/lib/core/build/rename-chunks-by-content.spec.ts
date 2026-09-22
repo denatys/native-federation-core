@@ -159,6 +159,22 @@ describe('renameChunksByContentCore', () => {
     expect(io.exists('/out/other.js')).toBe(true);
   });
 
+  it('keeps the slot of a name the bundler wrote in another alphabet', () => {
+    const io = createMemoryIo()
+      .setFile('/out/index-DqQoMqkL.js', 'export const a = 1;\n')
+      .setFile('/out/chunk-1a2b3c4d.js', 'export const b = 1;\n');
+
+    const renamed = renameChunksByContentCore(
+      io,
+      '/out',
+      ['index-DqQoMqkL.js', 'chunk-1a2b3c4d.js'],
+      []
+    );
+
+    expect(renamed.get('index-DqQoMqkL.js')).toMatch(/^index-[A-Za-z0-9_-]{8}\.js$/);
+    expect(renamed.get('chunk-1a2b3c4d.js')).toMatch(/^chunk-[0-9a-f]{8}\.js$/);
+  });
+
   it('appends a hash segment to a name that carries none', () => {
     const io = createMemoryIo().setFile('/out/lazy.js', 'export const a = 1;\n');
 

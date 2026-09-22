@@ -19,6 +19,7 @@ import { nodeIo } from '../../utils/io/node-io-adapter.js';
 import { DEFAULT_EXTERNAL_LIST } from './default-external-list.js';
 import { isSourceFile, transformChunkImports } from './rewrite-chunk-imports.js';
 import { renameChunksByContentCore } from './rename-chunks-by-content.js';
+import { hashBuildMetadata, hashEntryContent } from '../../utils/hash.js';
 import { toChunkImport } from '../../domain/core/chunk.js';
 import { cacheEntryCore, getChecksumCore, getFilename } from '../cache/cache-persistence.js';
 import { linkedContentSignals } from './resolve-shared-dirs.js';
@@ -337,7 +338,7 @@ function rewriteImports(
   for (const file of sourceFiles.filter(file => hashEntries.has(file))) {
     const filePath = path.join(cachePath, file);
     const rewritten = io.readText(filePath);
-    const hashedName = `${file.split('.')[0]}.${calcHashCore(io, rewritten)}.js`;
+    const hashedName = `${file.split('.')[0]}.${hashEntryContent(io, rewritten)}.js`;
     io.writeText(path.join(cachePath, hashedName), rewritten);
     // Cache hygiene: drop the version-named intermediate (untracked by metadata, so clear() can't reap it).
     io.remove(filePath);
@@ -375,7 +376,7 @@ function createOutName(
 ) {
   const hashBase =
     pi.version + '_' + pi.entryPoint + '_' + configState + (contentSignal ? '_' + contentSignal : '');
-  const hash = calcHashCore(io, hashBase);
+  const hash = hashBuildMetadata(io, hashBase);
 
   const outName = fedOptions.dev ? `${encName}.${hash}-dev.js` : `${encName}.${hash}.js`;
   return outName;
@@ -441,14 +442,4 @@ export function parseBuilderVersion(packageJson: string): string {
   } catch {
     return '';
   }
-}
-
-export function calcHashCore(hash: HashPort, hashBase: string) {
-  return hash
-    .hash('sha256', hashBase)
-    .base64()
-    .replace(/\//g, '_')
-    .replace(/\+/g, '-')
-    .replace(/=/g, '')
-    .substring(0, 10);
 }
