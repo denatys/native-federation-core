@@ -658,7 +658,7 @@ describe('bundleSharedCore (via injected io, repo and build adapter)', () => {
       expect(mem.isFile('/ws/dist/chunk-AAAAAAAA.js')).toBe(false);
 
       const entry = mem.readText(path.join('/ws/dist', result.externals[0]!.outFileName));
-      expect(entry).toContain(`"${chunk.packageName}"`);
+      expect(entry).toContain(chunk.packageName);
       expect(entry).not.toContain('AAAAAAAA');
     });
 

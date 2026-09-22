@@ -17,7 +17,12 @@ import { type NormalizedFederationOptions } from '../../domain/core/federation-o
 import { logger } from '../../utils/logger.js';
 import { nodeIo } from '../../utils/io/node-io-adapter.js';
 import { DEFAULT_EXTERNAL_LIST } from './default-external-list.js';
-import { isSourceFile, transformChunkImports } from './rewrite-chunk-imports.js';
+import {
+  applyEdits,
+  collectSpecifierEdits,
+  isSourceFile,
+  shiftSourceMap,
+} from './rewrite-chunk-imports.js';
 import { renameChunksByContentCore } from './rename-chunks-by-content.js';
 import { hashBuildMetadata, hashEntryContent } from '../../utils/hash.js';
 import { toChunkImport } from '../../domain/core/chunk.js';
@@ -317,7 +322,11 @@ function rewriteImports(
 
   for (const file of sourceFiles) {
     const filePath = path.join(cachePath, file);
-    io.writeText(filePath, transformChunkImports(io.readText(filePath), file));
+    const sourceCode = io.readText(filePath);
+    const edits = collectSpecifierEdits(sourceCode, file);
+    io.writeText(filePath, applyEdits(sourceCode, edits));
+    // The map esbuild wrote describes the text before the edits; move its columns along.
+    shiftSourceMap(io, `${filePath}.map`, sourceCode, edits);
   }
 
   // Chunks are published under their file name, so the name has to say what the bytes are;
@@ -375,7 +384,12 @@ function createOutName(
   contentSignal = ''
 ) {
   const hashBase =
-    pi.version + '_' + pi.entryPoint + '_' + configState + (contentSignal ? '_' + contentSignal : '');
+    pi.version +
+    '_' +
+    pi.entryPoint +
+    '_' +
+    configState +
+    (contentSignal ? '_' + contentSignal : '');
   const hash = hashBuildMetadata(io, hashBase);
 
   const outName = fedOptions.dev ? `${encName}.${hash}-dev.js` : `${encName}.${hash}.js`;
