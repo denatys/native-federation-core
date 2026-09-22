@@ -63,7 +63,7 @@ export function applyEdits(sourceCode: string, edits: SpecifierEdit[]): string {
  * by the length the edit added. Nothing else in the map is read or written, so sources,
  * names and original positions survive untouched.
  */
-export function shiftMappings(mappings: string, code: string, edits: SpecifierEdit[]): string {
+function shiftMappings(mappings: string, code: string, edits: SpecifierEdit[]): string {
   const lineStarts = [0];
   for (let i = 0; i < code.length; i++) {
     if (code.charCodeAt(i) === 10) lineStarts.push(i + 1);
@@ -135,10 +135,6 @@ export function rewriteChunkImportsCore(
 
   io.writeText(filePath, applyEdits(sourceCode, edits));
   shiftSourceMap(io, `${filePath}.map`, sourceCode, edits);
-}
-
-export function transformChunkImports(sourceCode: string, fileName: string): string {
-  return applyEdits(sourceCode, collectSpecifierEdits(sourceCode, fileName));
 }
 
 export function isSourceFile(fileName: string): boolean {
