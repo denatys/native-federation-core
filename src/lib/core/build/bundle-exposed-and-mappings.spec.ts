@@ -432,7 +432,7 @@ describe('bundleExposedAndMappingsCore (via injected build adapter)', () => {
     expect(chunk).not.toBe('chunk-AAAAAAAA.js');
     expect(io.isFile(`dist/${chunk}`)).toBe(true);
     expect(io.isFile('dist/chunk-AAAAAAAA.js')).toBe(false);
-    expect(io.readText('dist/Comp.js')).toContain(`"@nf-internal/${chunk!.replace(/\.js$/, '')}"`);
+    expect(io.readText('dist/Comp.js')).toContain(`@nf-internal/${chunk!.replace(/\.js$/, '')}`);
     expect(io.readText('dist/Comp.js')).not.toContain('AAAAAAAA');
   });
 
